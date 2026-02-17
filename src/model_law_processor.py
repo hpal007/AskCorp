@@ -8,13 +8,12 @@ class ModelLawProcessor:
 
         self.pdf_path = pdf_path
         self.output_dir = output_dir
-            # STEP 3: Detect ONLY real structural markers (not inline refs)
+          
         self.TOKEN_PATTERN = re.compile(
         r"(?m)^\s*(Section\s+\d+\.)"
         r"|^\s*([A-Z]\.)"
         r"|^\s*(\(\d+\))\s+(?=[A-Z])"
-        r"|^\s*(\([a-z]\))\s+(?=[A-Z])"
-    )
+        r"|^\s*(\([a-z]\))\s+(?=[A-Z])") # Detect ONLY real structural markers (not inline refs) like "Section 1.", "A.", "(1) ", "(a) " at start of lines
 
     
     def process(self):
@@ -27,6 +26,9 @@ class ModelLawProcessor:
 
         print("Parsing legal structure...")
         structure = self.parse_legal_structure(clean_text)
+
+        print("Collapsing table of contents...")
+        structure = self.collapse_table_of_contents(structure)
 
         output_path = self.output_dir + "structured.json"
         os.makedirs(self.output_dir, exist_ok=True)
@@ -51,10 +53,8 @@ class ModelLawProcessor:
 
             for b in blocks:
                 x0, y0, x1, y1, text, *_ = b
-
                 
-                # Remove header/footer using page geometry
-                # (works generically across model laws)
+                # Remove header/footer using page geometry (works generically across model laws)
                 top_margin = height * 0.08       # top 8% = header zone
                 bottom_margin = height * 0.92    # bottom 8% = footer zone
 
@@ -155,7 +155,38 @@ class ModelLawProcessor:
 
         return root
 
+    def collapse_table_of_contents(self, nodes):
+        """
+        Detect initial flat Section entries and collapse them into a TOC node.
+        """
 
+        toc_entries = []
+        body_start_index = 0
+
+        for i, node in enumerate(nodes):
+            is_flat_section = (
+                node["marker"].startswith("Section")
+                and len(node["children"]) == 0
+                and len(node["text"]) < 200  # TOC entries are short summaries
+            )
+
+            if is_flat_section:
+                toc_entries.append(node)
+            else:
+                body_start_index = i
+                break
+
+        # If we detected a TOC block, wrap it
+        if toc_entries:
+            toc_node = {
+                "marker": "TOC",
+                "text": "Table of Contents",
+                "children": toc_entries
+            }
+
+            return [toc_node] + nodes[body_start_index:]
+
+        return nodes
 
 if __name__ == "__main__":
     model_pdf = ModelLawProcessor(pdf_path="../docs/model-law-565.pdf")
