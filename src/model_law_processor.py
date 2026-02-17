@@ -2,11 +2,12 @@ import os
 import fitz  # PyMuPDF
 import json
 import re
+from pathlib import Path
 
 class ModelLawProcessor:
     def __init__(self,pdf_path,output_dir="../docs/model_law/"):
 
-        self.pdf_path = pdf_path
+        self.pdf_path = Path(pdf_path)
         self.output_dir = output_dir
           
         self.TOKEN_PATTERN = re.compile(
@@ -30,7 +31,7 @@ class ModelLawProcessor:
         print("Collapsing table of contents...")
         structure = self.collapse_table_of_contents(structure)
 
-        output_path = self.output_dir + "structured.json"
+        output_path = self.output_dir + self.pdf_path.stem + ".json"
         os.makedirs(self.output_dir, exist_ok=True)
         print("Saving output...")
         with open(output_path, "w") as f:
