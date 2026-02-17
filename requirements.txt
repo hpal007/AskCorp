@@ -6,3 +6,6 @@ langchain-google-genai
 python-dotenv
 langchain-community
 ipykernel
+
+
+pymupdf
