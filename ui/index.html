@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AskCorp — ABC Insurance Knowledge Assistant</title>
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+
+<body>
+
+  <div class="app">
+
+    <!-- ══════════════ SIDEBAR ══════════════ -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <div class="brand-icon"><img src="assets/logo.svg" alt="AskCorp Logo" style="width: 20px; height: 20px;">
+          </div>
+          <span class="brand-name">AskCorp</span>
+        </div>
+        <div class="brand-sub">ABC Insurance · Internal Tool</div>
+      </div>
+
+      <button class="btn-settings" onclick="openSettings()" title="Configure endpoints">⚙</button>
+
+      <!-- Upload -->
+      <div class="sidebar-section">
+        <div class="section-title">Knowledge Base</div>
+        <div class="upload-zone" id="drop-zone">
+          <input type="file" id="file-input" accept=".pdf" multiple>
+          <div class="upload-icon">📄</div>
+          <div class="upload-text">
+            <strong>Upload PDF Documents</strong>
+            Drag &amp; drop or click to browse
+          </div>
+          <div class="upload-hint">Accepts PDF files · Multiple allowed</div>
+        </div>
+        <div class="upload-progress" id="upload-progress">
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-label" id="progress-label">Uploading…</div>
+        </div>
+      </div>
+
+      <!-- Doc List -->
+      <div class="docs-list" id="docs-list">
+        <div class="section-title">Indexed Documents</div>
+        <div class="docs-empty" id="docs-empty">
+          No documents yet.<br>Upload PDFs to get started.
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="sidebar-footer">
+        <div class="status-pill">
+          <span class="status-dot"></span>
+          Connected to AWS
+        </div>
+      </div>
+    </aside>
+
+    <!-- ══════════════ MAIN ══════════════ -->
+    <main class="main">
+
+      <!-- Top bar -->
+      <div class="topbar">
+        <div class="topbar-title">Insurance Policy Assistant</div>
+        <div class="topbar-meta">
+          <span class="topbar-badge" id="model-badge">claude-haiku-3</span>
+          <span class="topbar-badge" id="docs-badge">0 docs</span>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <div class="chat-area" id="chat-area">
+        <div class="welcome" id="welcome-screen">
+          <span class="welcome-icon">📋</span>
+          <h2>Ask anything about our policies</h2>
+          <p>I can answer questions about auto, health, life, and home insurance policies using the documents in our
+            knowledge base. All answers are grounded in source documents with citations.</p>
+          <div class="suggestion-chips">
+            <div class="chip" onclick="sendChip(this)">What does the auto policy cover?</div>
+            <div class="chip" onclick="sendChip(this)">How do I file a claim?</div>
+            <div class="chip" onclick="sendChip(this)">What is the deductible for home insurance?</div>
+            <div class="chip" onclick="sendChip(this)">Life policy exclusions</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input -->
+      <div class="input-bar">
+        <div class="input-wrap">
+          <textarea id="chat-input" placeholder="Ask a question about your insurance policies…" rows="1"
+            onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+          <button class="btn-send" id="send-btn" onclick="sendMessage()">
+            ➤
+          </button>
+        </div>
+        <div class="input-footer">
+          <span class="input-hint">Press <strong>Enter</strong> to send · <strong>Shift+Enter</strong> for new
+            line</span>
+          <span class="doc-count-hint" id="input-doc-hint">📂 0 documents indexed</span>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- ══════════════ SETTINGS MODAL ══════════════ -->
+  <div class="modal-overlay" id="settings-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>⚙ Configure Endpoints</h3>
+        <button class="modal-close" onclick="closeSettings()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Lambda 2 — RAG Query Function URL</label>
+          <input class="form-input" type="text" id="cfg-query-url"
+            placeholder="https://xxxx.lambda-url.us-east-1.on.aws/">
+          <div class="form-hint">The Function URL of your RAG Query Handler Lambda (Lambda 2). Found in Lambda console →
+            Configuration → Function URL.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Presigned URL Generator Endpoint</label>
+          <input class="form-input" type="text" id="cfg-presign-url"
+            placeholder="https://xxxx.lambda-url.us-east-1.on.aws/presign">
+          <div class="form-hint">Endpoint that returns a presigned S3 PUT URL for the given filename. Your Lambda 2 or a
+            small helper Lambda can expose this. Returns JSON: <code
+              style="font-family:DM Mono,monospace;font-size:11px">{ "url": "...", "key": "..." }</code></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Foundation Model</label>
+          <input class="form-input" type="text" id="cfg-model" placeholder="anthropic.claude-3-haiku-20240307-v1:0"
+            value="anthropic.claude-3-haiku-20240307-v1:0">
+          <div class="form-hint">Bedrock model ID sent with each query request.</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" onclick="closeSettings()">Cancel</button>
+        <button class="btn-primary" onclick="saveSettings()">Save Configuration</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════ TOAST CONTAINER ══════════════ -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <script src="js/app.js"></script>
+</body>
+
+</html>
