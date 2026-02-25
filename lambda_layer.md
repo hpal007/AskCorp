@@ -10,6 +10,8 @@ pip install \
   langchain-aws \
   langchain-core \
   langchain \
+  pymupdf \
+  pypdf2 \
   pydantic \
   pydantic-core \
   --target lambda_layer/python \

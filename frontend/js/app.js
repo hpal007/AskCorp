@@ -1,8 +1,8 @@
 // ── Config ────────────────────────────────────────────────
-const QUERY_URL = 'https://igs25i6ckmcwmczysu5dhahdze0kulpa.lambda-url.us-east-1.on.aws/'; // TODO: Replace with your actual Lambda URL
+const QUERY_URL = 'https://f2pduhwfgjnb5ynplz26exbmkm0gwgvm.lambda-url.us-east-1.on.aws/'; // TODO: Replace with your actual Lambda URL
 
 let CONFIG = {
-  model: localStorage.getItem('cfg_model') || 'anthropic.claude-3-haiku-20240307-v1:0',
+  model: localStorage.getItem('cfg_model') || 'google.gemma-3-12b-it',
 };
 
 let isThinking = false;

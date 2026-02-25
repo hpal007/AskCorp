@@ -79,7 +79,7 @@ def lambda_handler(event: dict, context) -> dict:
         model_id      = body.get("model", "google.gemma-3-12b-it")
         prompt        = body.get("query")
         
-        system_prompt = "You are helpful assitent, who helps with Q&A for Policy related documents. "
+        system_prompt = "You are helpful assistant, who helps with Q&A for Policy related documents. "
         max_tokens    = 2048
         temperature   = 0.7
         # top_k = 3
@@ -105,7 +105,6 @@ def lambda_handler(event: dict, context) -> dict:
             "body": json.dumps({
                 "response":     generated_text,
                 "model_id":     model_id,
-                # "model_family": detect_model_family(model_id),
             }),
         }
 
@@ -129,3 +128,4 @@ def lambda_handler(event: dict, context) -> dict:
             "statusCode": 500,
             "body": json.dumps({"error": "Internal server error", "details": str(e)}),
         }
+    
