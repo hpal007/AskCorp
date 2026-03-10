@@ -1,5 +1,28 @@
 // ── Config ────────────────────────────────────────────────
-const QUERY_URL = 'https://f2pduhwfgjnb5ynplz26exbmkm0gwgvm.lambda-url.us-east-1.on.aws/'; // TODO: Replace with your actual Lambda URL
+// const QUERY_URL = 'https://f2pduhwfgjnb5ynplz26exbmkm0gwgvm.lambda-url.us-east-1.on.aws/'; // TODO: Replace with your actual Lambda URL
+
+const QUERY_URL = 'https://jjhngyc4m9.execute-api.us-east-1.amazonaws.com/ask';
+
+// ── Demo / Test Mode ──────────────────────────────────────
+// Set DEMO_MODE = true to bypass the real API and return dummy data.
+// Flip back to false before deploying to production.
+const DEMO_MODE = false;
+
+const DUMMY_RESPONSE = {
+  answer: "The Health Insurance Reserves Model Regulation is a set of standards established by the National Association of Insurance Commissioners (NAIC) that provide minimum requirements for health insurance reserves. The regulation covers three main categories of reserves:\n\n1. Claim Reserves - Reserves for incurred but unpaid claims on health insurance policies.\n2. Premium Reserves - Reserves for unearned premiums.\n3. Contract Reserves - Reserves for future benefits on policies where the future benefits exceed the future premiums.\nThe regulation specifies requirements for the interest rates, mortality tables, and other assumptions to be used in calculating these reserves.",
+  citations: [
+    {
+      source_file: "model-law-10.pdf",
+      page_number: null,
+      s3_uri: "https://askcorp-raw-document.s3.amazonaws.com/model-law-10.pdf"
+    },
+    {
+      source_file: "model-law-10.pdf",
+      page_number: null,
+      s3_uri: "https://askcorp-raw-document.s3.amazonaws.com/model-law-10.pdf"
+    }
+  ]
+};
 
 let CONFIG = {
   model: localStorage.getItem('cfg_model') || 'google.gemma-3-12b-it',
@@ -54,6 +77,7 @@ function sendChip(el) {
 }
 
 async function sendMessage() {
+
   const input = document.getElementById('chat-input');
   const query = input.value.trim();
   if (!query || isThinking) return;
@@ -76,28 +100,37 @@ async function sendMessage() {
   scrollChat();
 
   try {
-    const resp = await fetch(QUERY_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query,
-        model: CONFIG.model,
-      }),
-    });
+    let data;
 
-    removeThinking(thinkingId);
+    if (DEMO_MODE) {
+      // ── Demo mode: return dummy data after a short simulated delay ──
+      await new Promise(resolve => setTimeout(resolve, 800));
+      removeThinking(thinkingId);
+      data = DUMMY_RESPONSE;
+      console.log("[DEMO MODE] Returning dummy response:", data);
+    } else {
+      const resp = await fetch(QUERY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: query }),
+      });
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      throw new Error(`Lambda returned ${resp.status}: ${errText}`);
+      removeThinking(thinkingId);
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        throw new Error(`Lambda returned ${resp.status}: ${errText}`);
+      }
+
+      data = await resp.json();
+      console.log("Lambda response:", data);
+      console.log("Citations:", data.citations);
     }
 
-    const data = await resp.json();
-
     // Expected response shape:
-    // { answer: "...", citations: [{ source_file: "...", page_number: 2, section_title: "..." }] }
-    const answer    = data.answer    || data.response || data.text || 'No response received.';
-    const citations = data.citations || data.sources  || [];
+    // { answer: "...", citations: [{ source_file: "...", page_number: 2, s3_uri: "..." }] }
+    const answer = data.answer || data.response || data.text || 'No response received.';
+    const citations = data.citations || data.sources || [];
 
     appendMessage('assistant', answer, citations);
 
@@ -114,42 +147,70 @@ async function sendMessage() {
 
 function appendMessage(role, text, citations) {
   const area = document.getElementById('chat-area');
-  const el   = document.createElement('div');
+  const el = document.createElement('div');
   el.className = `msg ${role}`;
 
   const avatar = role === 'user'
     ? '<div class="msg-avatar">A</div>'
     : '<div class="msg-avatar">⚡</div>';
 
-  // Format text: simple paragraph split
-  const formatted = text.split('\n\n')
-    .map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`)
-    .join('');
+  // Format answer text and enable citation markers [1]
+  const formatted = text
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\[(\d+)\]/g, '<sup class="cite-ref">[$1]</sup>');
 
-  // Citations HTML
+  const answerHtml = `<p>${formatted}</p>`;
+
   let citationsHtml = '';
+
   if (citations && citations.length > 0) {
-    const cards = citations.map(c => `
-      <div class="citation-card">
-        <span class="cite-icon">📄</span>
-        <span>
-          <div class="cite-file">${c.source_file || c.document || c.file || 'Unknown document'}</div>
-          ${c.section_title ? `<div style="font-size:11px;color:var(--text-soft);margin-top:1px">${c.section_title}</div>` : ''}
-        </span>
-        ${c.page_number != null ? `<span class="cite-page">Page ${c.page_number}</span>` : ''}
-      </div>
-    `).join('');
+
+    const cards = citations.map((c, i) => {
+
+      const number = i + 1;
+      const fileName = c.source_file || 'Unknown document';
+      const url = c.s3_uri || '';
+      // const url = c.s3_uri || c.s3_url || c.url || c.location || '';
+      const page = c.page_number;
+
+      return `
+        <div class="citation-card" id="citation-${number}">
+          <span class="cite-icon">[${number}]</span>
+
+          <span class="cite-content">
+            <div class="cite-file">${fileName}</div>
+
+            ${url ? `
+              <div class="cite-link">
+                <a href="${url}" target="_blank" rel="noopener noreferrer">
+                  Open document
+                </a>
+              </div>
+            ` : ''}
+          </span>
+
+          ${page ? `<span class="cite-page">Page ${page}</span>` : ''}
+
+        </div>
+      `;
+
+    }).join('');
+
     citationsHtml = `
       <div class="citations">
         <div class="citation-label">📎 Sources</div>
         ${cards}
-      </div>`;
+      </div>
+    `;
   }
 
   el.innerHTML = `
     ${avatar}
     <div class="msg-body">
-      <div class="msg-bubble">${formatted}${citationsHtml}</div>
+      <div class="msg-bubble">
+        ${answerHtml}
+        ${citationsHtml}
+      </div>
     </div>
   `;
 
@@ -158,7 +219,7 @@ function appendMessage(role, text, citations) {
 
 function appendThinking(id) {
   const area = document.getElementById('chat-area');
-  const el   = document.createElement('div');
+  const el = document.createElement('div');
   el.className = 'msg assistant';
   el.id = id;
   el.innerHTML = `
@@ -181,7 +242,7 @@ function removeThinking(id) {
 
 function appendError(msg) {
   const area = document.getElementById('chat-area');
-  const el   = document.createElement('div');
+  const el = document.createElement('div');
   el.className = 'msg assistant';
   el.innerHTML = `
     <div class="msg-avatar">⚡</div>

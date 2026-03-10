@@ -1,24 +1,45 @@
+from importlib.resources import path
 import os
 import fitz  # PyMuPDF
 import json
 import re
 from pathlib import Path
 
+
+def detect_type(marker):
+    if marker == "TOC":
+        return "toc"
+
+    if marker.startswith("Section"):
+        return "section"
+
+    if re.fullmatch(r"[A-Z]\.", marker):
+        return "subsection"
+
+    if re.fullmatch(r"\(\d+\)", marker):
+        return "clause"
+
+    if re.fullmatch(r"\([a-z]\)", marker):
+        return "subclause"
+
+    return "text"
+
 class ModelLawProcessor:
-    def __init__(self,pdf_path,output_dir="../docs/model_law/"):
+    def __init__(self, pdf_path, output_dir="../docs/model_law/"):
 
         self.pdf_path = Path(pdf_path)
         self.output_dir = output_dir
-          
-        self.TOKEN_PATTERN = re.compile(
-        r"(?m)^\s*(Section\s+\d+\.)"
-        r"|^\s*([A-Z]\.)"
-        r"|^\s*(\(\d+\))\s+(?=[A-Z])"
-        r"|^\s*(\([a-z]\))\s+(?=[A-Z])") # Detect ONLY real structural markers (not inline refs) like "Section 1.", "A.", "(1) ", "(a) " at start of lines
+        self.pdf_name = self.pdf_path.stem
 
-    
+        self.TOKEN_PATTERN = re.compile(
+            r"(?m)^\s*(Section\s+\d+\.)"
+            r"|^\s*([A-Z]\.)"
+            r"|^\s*(\(\d+\))\s+(?=[A-Z])"
+            r"|^\s*(\([a-z]\))\s+(?=[A-Z])"
+        )  # Detect ONLY real structural markers (not inline refs) like "Section 1.", "A.", "(1) ", "(a) " at start of lines
+
     def process(self):
-    # def parse_model_law(pdf_path, output_path="structured.json"):
+        # def parse_model_law(pdf_path, output_path="structured.json"):
         print("Extracting clean body text...")
         raw_text = self.extract_text()
 
@@ -38,7 +59,7 @@ class ModelLawProcessor:
             json.dump(structure, f, indent=2)
 
         print(f"Done → {output_path}")
-
+        return output_path
 
     # STEP 1: Extract BODY TEXT only (remove headers/footers first)
     def extract_text(self):
@@ -54,10 +75,10 @@ class ModelLawProcessor:
 
             for b in blocks:
                 x0, y0, x1, y1, text, *_ = b
-                
+
                 # Remove header/footer using page geometry (works generically across model laws)
-                top_margin = height * 0.08       # top 8% = header zone
-                bottom_margin = height * 0.92    # bottom 8% = footer zone
+                top_margin = height * 0.08  # top 8% = header zone
+                bottom_margin = height * 0.92  # bottom 8% = footer zone
 
                 if y1 < top_margin:
                     continue  # skip header
@@ -70,7 +91,6 @@ class ModelLawProcessor:
             page_texts.append("\n".join(body_lines))
 
         return "\n\n".join(page_texts)
-
 
     # STEP 2: Normalize text while preserving legal structure
     def normalize_text(self, text):
@@ -103,9 +123,7 @@ class ModelLawProcessor:
 
         return text.strip()
 
-
-
-    def classify_level(self,token):
+    def classify_level(self, token):
         token = token.strip()
 
         if token.startswith("Section"):
@@ -117,7 +135,6 @@ class ModelLawProcessor:
         if re.fullmatch(r"\([a-z]\)", token):
             return 4
         return 0
-
 
     # STEP 4: Build hierarchy from legal grammar
     def parse_legal_structure(self, text):
@@ -138,11 +155,7 @@ class ModelLawProcessor:
 
             level = self.classify_level(token)
 
-            node = {
-                "marker": token,
-                "text": content,
-                "children": []
-            }
+            node = {"marker": token, "text": content, "children": []}
 
             while len(stack) >= level:
                 stack.pop()
@@ -182,13 +195,71 @@ class ModelLawProcessor:
             toc_node = {
                 "marker": "TOC",
                 "text": "Table of Contents",
-                "children": toc_entries
+                "children": toc_entries,
             }
 
             return [toc_node] + nodes[body_start_index:]
 
         return nodes
 
+    def flatten_nodes(self, nodes, parent_markers=[]):
+        chunks = []
+
+        for node in nodes:
+            marker = node["marker"]
+            text = node["text"]
+
+            node_type = detect_type(marker)
+
+            # enrich TOC with its children
+            if node["marker"] == "TOC":
+                children_titles = [child["text"] for child in node["children"]]
+
+                # text = text + "\n" + "\n".join(children_titles)
+                text = ("This is the table of contents of Model Law 565.\n\n"
+                        "Sections included in this model law are:\n\n"
+                        + "\n".join(children_titles)
+                )
+
+            path = parent_markers + [marker]
+
+            # create unique id for chunk based on path
+            path_str = " > ".join([el.replace('.','') for el in path])
+            chunk_id = f"{self.pdf_name}::{path_str}"
+
+            chunks.append(
+                {
+                    "text": text,
+                    "metadata": {
+                        "id": chunk_id,
+                        "path": path_str,
+                        "section": parent_markers[0] if parent_markers else marker,
+                        "document": self.pdf_name,
+                        "type": node_type,
+                    },
+                }
+            )
+
+            # Remove TOC children 
+            if marker != "TOC":
+                chunks.extend(self.flatten_nodes(node["children"], path))
+
+        return chunks
+
+
 if __name__ == "__main__":
     model_pdf = ModelLawProcessor(pdf_path="../docs/model-law-565.pdf")
-    model_pdf.process()
+    output_path = model_pdf.process()
+
+    with open(output_path) as f:
+        structure = json.load(f)
+
+    chunks = model_pdf.flatten_nodes(structure)
+    chunk_fm = output_path.split("/")[-1].replace(".json", "")
+
+    path = Path("../docs/model_law/") / f"{chunk_fm}_chunks.json"
+    os.makedirs(path.parent, exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(chunks, f, indent=2)
+
+    print("Chunks created:", len(chunks))
